@@ -1,0 +1,24 @@
+# Environnement virtuel
+venv/
+.env
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Données volumineuses
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# MLflow local runs (pour garder le dépôt léger)
+mlruns/
+.mlflow/
+
+# IDE
+.vscode/
+.idea/
+.ipynb_checkpoints/
