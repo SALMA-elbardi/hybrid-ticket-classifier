@@ -1,0 +1,23 @@
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  test_size: 0.2
+  random_state: 42
+  target_categories:
+    - "card_arrival"
+    - "card_linking"
+    - "exchange_rate"
+    - "card_payment_wrong_exchange_rate"
+    - "extra_charge_on_statement"
+    - "pending_transfer"
+    - "transfer_not_received_by_recipient"
+    - "balance_not_updated_after_cheque_or_cash_deposit"
+
+ml:
+  confidence_threshold: 0.75
+  experiment_name: "ticket_classifier_experiments"
+  registered_model_name: "TicketClassifierChampion"
+
+llm:
+  model_name: "llama3.2:3b"
+  base_url: "http://localhost:11434/v1"
