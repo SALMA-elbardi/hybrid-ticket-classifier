@@ -23,9 +23,27 @@ st.markdown(
         display: inline-block;
         font-size: 0.9rem;
     }
+    .badge-dense {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-weight: 700;
+        display: inline-block;
+        font-size: 0.9rem;
+    }
     .badge-slow {
         background-color: #fff3cd;
         color: #856404;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-weight: 700;
+        display: inline-block;
+        font-size: 0.9rem;
+    }
+    .badge-guardrail {
+        background-color: #e2e3e5;
+        color: #383d41;
         padding: 6px 14px;
         border-radius: 6px;
         font-weight: 700;
@@ -49,26 +67,42 @@ with st.spinner("Initialisation du système de classification hybride..."):
 st.sidebar.title("Paramètres & Architecture")
 st.sidebar.caption("Supervision du routage en cascade")
 
-st.sidebar.markdown("### ⚙️ Modèles Actifs")
+st.sidebar.markdown("### ⚙️ Choix du Fast-Path")
+selected_engine = st.sidebar.radio(
+    "Moteur d'extraction de caractéristiques :",
+    options=["dense", "tfidf"],
+    format_func=lambda x: "🧠 Dense Embeddings (MiniLM-L6-v2)" if x == "dense" else "⚡ TF-IDF (N-grammes creux)",
+    help="Comparez en direct la robustesse sémantique et la latence d'inférence."
+)
+
+st.sidebar.markdown("### ⚙️ Configuration Actuelle")
 st.sidebar.info(f"""
 - **Seuil d'aiguillage ($\tau$)** : `{classifier.threshold * 100:.0f} %`
-- **Fast-Path** : `LinearSVC (MLflow Registry)`
-- **Slow-Path** : `Llama 3.2:3b (Ollama)`
+- **Moteur Fast-Path Actif** : `{"Sentence-Transformers (MiniLM)" if selected_engine == "dense" else "TF-IDF + LinearSVC"}`
+- **Fallback Slow-Path** : `Llama 3.2:3b (Ollama)`
 """)
 
-st.sidebar.markdown("### 📊 Résultats du Benchmark Réel")
-st.sidebar.markdown("""
-- **Absorption Fast-Path** : `82.5 %`
-- **Recours Fallback LLM** : `17.5 %`
-- **Latence Fast-Path** : `~8 ms`
-- **Accuracy globale** : `95.0 %`
-""")
+st.sidebar.markdown("### 📊 Benchmark des Champions MLflow")
+if selected_engine == "dense":
+    st.sidebar.markdown("""
+    - **Modèle Champion** : `Dense LogisticRegression`
+    - **Accuracy / F1-Macro** : `96.1 %` / `0.962`
+    - **Latence Fast-Path** : `~7-15 ms`
+    - **Résistance Sémantique** : `Élevée (comprend le contexte)`
+    """)
+else:
+    st.sidebar.markdown("""
+    - **Modèle Champion** : `Calibrated LinearSVC`
+    - **Accuracy / F1-Macro** : `95.0 %` / `0.952`
+    - **Latence Fast-Path** : `~1-2 ms`
+    - **Résistance Sémantique** : `Vulnérable aux mots isolés`
+    """)
 
 # --- CORPS PRINCIPAL ---
 st.title("🏦 Hybrid-TicketClassifier — Portail Support Client")
 st.markdown("""
 Architecture en cascade : traitement haute fréquence en quelques millisecondes 
-via le modèle statistique supervisé, et délégation vers le modèle de langage local pour désambiguïser les cas complexes.
+via le modèle statistique supervisé, et délégation vers le modèle de langage local pour désambiguïser les cas complexes ou hors-domaine.
 """)
 
 st.divider()
@@ -85,6 +119,10 @@ with col_input:
         "I sent money to a friend yesterday but it is still showing as pending.",
         "How do I link my virtual card with my phone payment app?",
         "I tried to transfer money but got an unexpected fee and the payment is delayed.",
+        "hey my name is card",
+        "my card is not arrived yet ",
+        "I deposited a cheque but my balance hasn't updated.",
+        "i have an extra fee on my bank statement"
     ]
 
     selected_preset = st.selectbox("Tickets d'exemples pré-configurés :", preset_tickets)
@@ -107,14 +145,24 @@ with col_output:
             st.warning("Veuillez saisir un texte de ticket à analyser.")
         else:
             with st.spinner("Analyse et routage en cours..."):
-                result = classifier.predict(user_text.strip())
+                result = classifier.predict(user_text.strip(), engine=selected_engine)
 
-            is_ml = "ML_Champion" in result["routed_by"]
+            routed_by = result["routed_by"]
 
-            # Badge d'aiguillage
-            if is_ml:
+            # Badges conditionnels selon le moteur ayant tranché
+            if "Rule_Engine" in routed_by:
                 st.markdown(
-                    '<span class="badge-fast">⚡ FAST-PATH ACTIVÉ (Scikit-Learn MLflow)</span>',
+                    '<span class="badge-guardrail">🛡️ GARDE-FOU DÉTERMINISTE ACTIVÉ (O(1) Out-of-Scope)</span>',
+                    unsafe_allow_html=True,
+                )
+            elif "Dense" in routed_by:
+                st.markdown(
+                    '<span class="badge-dense">🧠 FAST-PATH ACTIVÉ (Dense MiniLM + Champion MLflow)</span>',
+                    unsafe_allow_html=True,
+                )
+            elif "TFIDF" in routed_by or "ML_Champion" in routed_by:
+                st.markdown(
+                    '<span class="badge-fast">⚡ FAST-PATH ACTIVÉ (TF-IDF + LinearSVC MLflow)</span>',
                     unsafe_allow_html=True,
                 )
             else:
@@ -125,11 +173,11 @@ with col_output:
 
             st.write("")
 
-            # Formatage de la latence (secondes si >= 1000 ms, millisecondes sinon)
+            # Formatage de la latence
             latency_val = result["latency_ms"]
             latency_str = f"{latency_val / 1000:.2f} s" if latency_val >= 1000 else f"{latency_val:.1f} ms"
 
-            # Cartes métriques responsives sans troncature
+            # Cartes métriques responsives
             st.markdown(
                 f"""
             <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 12px; margin: 15px 0;">
@@ -161,11 +209,13 @@ with col_output:
             st.progress(min(max(float(result["confidence"]), 0.0), 1.0))
 
             # Explication détaillée du routage
-            st.markdown("### 📋 Explication du Routage")
-            if is_ml:
+            st.markdown("###  Explication du Routage")
+            if "Rule_Engine" in routed_by:
+                st.warning(f"**Interception Déterministe :** {result['reason']}")
+            elif "ML" in routed_by or "TFIDF" in routed_by or "Dense" in routed_by:
                 st.info(
-                    f"**Règle métier :** Le score de confiance ({result['confidence'] * 100:.1f} %) "
-                    f"dépasse le seuil de {classifier.threshold * 100:.0f} %. Traité directement avec une latence minimale."
+                    f"**Règle métier ({routed_by}) :** Le score de confiance ({result['confidence'] * 100:.1f} %) "
+                    f"dépasse le seuil de {classifier.threshold * 100:.0f} %. Traité directement sans solliciter le LLM."
                 )
             else:
                 st.warning(
@@ -178,10 +228,17 @@ with col_output:
 st.divider()
 
 # Détails techniques sous accordéon
-with st.expander("🔍 Voir les détails du modèle en production (Model Registry MLflow)"):
+with st.expander("🔍 Voir les détails des modèles comparés en production (MLflow Registry)"):
     st.markdown("""
-    - **Modèle déployé** : `Calibrated_LinearSVC` (Version 1 - Champion)
-    - **Prétraitement** : Nettoyage regex, normalisation de tokens (`amount_token`, `date_token`, `number_token`), vectorisation TF-IDF.
-    - **Calibration de probabilités** : `CalibratedClassifierCV` (méthode sigmoïde / Platt Scaling).
-    - **Gouvernance & Registry** : Modèle versionné et servi dynamiquement depuis les artefacts MLflow.
+    - **Approche 1 — TF-IDF (Baseline Haute Fréquence)** :
+      - Modèle : `Calibrated_LinearSVC` (Version 1 - Champion)
+      - Vectorisation : N-grammes creux (1, 2)
+      - Latence : `< 2 ms`
+      - Limite : Sensible aux mots-clés bancaires hors-contexte.
+    - **Approche 2 — Dense Embeddings (Compréhension Sémantique)** :
+      - Modèle : `Dense_LogisticRegression` (Enregistré dans `DenseTicketClassifierChampion`)
+      - Embedder : `sentence-transformers/all-MiniLM-L6-v2` (Vecteurs denses 384d)
+      - Latence : `~8 à 15 ms`
+      - Avantage : Distingue le sens global de la phrase et élimine les faux positifs lexicaux.
+    - **Slow-Path de Repli** : `Llama 3.2:3b` via Ollama avec formatage JSON contraint et gestion du hors-domaine (`out_of_scope`).
     """)

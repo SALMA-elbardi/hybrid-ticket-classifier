@@ -5,7 +5,6 @@ from sentence_transformers import SentenceTransformer
 class TextEmbedder:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model_name = model_name
-        # Chargé sur CPU pour un coût minimal et une inférence légère
         self.model = SentenceTransformer(model_name, device="cpu")
 
     def encode(self, texts: list[str], show_progress: bool = False) -> np.ndarray:

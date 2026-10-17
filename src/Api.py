@@ -13,7 +13,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Chargement du pipeline hybride en mémoire (chargé une seule fois au boot)
+# Chargement du pipeline hybride en mémoire 
 classifier = None
 
 @app.on_event("startup")

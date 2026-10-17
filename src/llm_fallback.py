@@ -15,7 +15,7 @@ CATEGORY_DEFINITIONS_AND_EXAMPLES = {
     "pending_transfer": "I sent a money transfer or wire, but the status is still pending or delayed.",
     "transfer_timing": "How long does an international or standard transfer take to arrive?",
     "balance_not_updated_after_cheque_or_cash_deposit": "I deposited funds or a cheque but my current balance did not update.",
-    "card_not_working": "My physical or virtual card is declined or not working at the terminal.",
+    "card_not_working": "My physical or virtual card is declined, blocked, or not working at the terminal.",
     "top_up_reverted": "My top-up was canceled, reversed, or sent back to my source account.",
 }
 
@@ -38,24 +38,26 @@ class LLMFallbackRouter:
         candidate_names_with_oos = candidate_names + ["out_of_scope"]
 
         few_shot_context = "\n".join(
-            [f'- "{cat}": reference intent -> "{CATEGORY_DEFINITIONS_AND_EXAMPLES.get(cat, "")}"'
+            [f'- "{cat}": {CATEGORY_DEFINITIONS_AND_EXAMPLES.get(cat, "")}'
              for cat in candidate_names]
         )
 
         system_prompt = (
-            "You are a strict banking ticket classifier.\n"
-            "Your priority is to identify whether the text contains an actual, explicit banking request.\n\n"
-            "Available categories:\n"
+            "You are an AI support ticket router for a retail bank.\n\n"
+            "Candidate banking categories:\n"
             f"{few_shot_context}\n"
-            '- "out_of_scope": ANY text that does NOT clearly ask for a banking action (e.g. personal names, chit-chat, greetings, questions about other topics, random sentences).\n\n'
-            "Strict Rules:\n"
-            '1. If the message does not contain a clear problem or question related to the banking categories, you MUST classify it as "out_of_scope".\n'
-            '2. Do NOT force a banking category onto irrelevant text.\n'
-            f"3. You must select strictly ONE category from this list: {json.dumps(candidate_names_with_oos)}.\n\n"
-            'Return ONLY valid JSON: {"category": "<chosen_category>", "reason": "<short justification>"}'
+            '- "out_of_scope": ONLY use this if the message has ABSOLUTELY NO banking issue, question, or transaction problem (e.g. pure chit-chat, random words, weather, insults).\n\n'
+            "CRITICAL INSTRUCTIONS:\n"
+            "1. Real customers often start with polite introductions (e.g. 'Hello, my name is...', 'Good morning'). "
+            "You MUST IGNORE the greeting and focus on the actual problem described in the message.\n"
+            "2. If the customer mentions an issue like 'card is not working', 'card declined', 'transfer delayed', or 'extra fee', "
+            "it is a VALID banking ticket. Classify it into the matching category, NEVER out_of_scope.\n"
+            f"3. You must output strictly ONE category from this exact list: {json.dumps(candidate_names_with_oos)}.\n\n"
+            'Return ONLY a valid JSON object:\n'
+            '{"category": "<chosen_category>", "reason": "<one short sentence explaining your choice>"}'
         )
 
-        user_content = f'Customer Message to evaluate: "{text}"'
+        user_content = f'Customer Ticket: "{text}"'
 
         try:
             response = self.client.chat.completions.create(

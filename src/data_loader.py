@@ -33,7 +33,7 @@ def fetch_and_prepare_data(config_path="config.yaml"):
 
     # Sécurité au cas où les libellés diffèrent
     if len(df_filtered) == 0:
-        print("⚠️ Catégories configurées non trouvées, sélection des 8 plus fréquentes...")
+        print(" Catégories configurées non trouvées, sélection des 8 plus fréquentes...")
         top_cats = df_all["category"].value_counts().head(8).index.tolist()
         df_filtered = df_all[df_all["category"].isin(top_cats)].copy()
         print(f"Catégories retenues : {top_cats}")
@@ -42,7 +42,7 @@ def fetch_and_prepare_data(config_path="config.yaml"):
     os.makedirs(config["data"]["raw_dir"], exist_ok=True)
     raw_path = os.path.join(config["data"]["raw_dir"], "banking77_filtered.csv")
     df_filtered.to_csv(raw_path, index=False)
-    print(f"✅ Données brutes sauvegardées ({len(df_filtered)} lignes) -> {raw_path}")
+    print(f" Données brutes sauvegardées ({len(df_filtered)} lignes) -> {raw_path}")
 
     # Split Stratifié Train / Test (80% / 20%)
     train_df, test_df = train_test_split(
