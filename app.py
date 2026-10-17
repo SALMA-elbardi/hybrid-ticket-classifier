@@ -152,7 +152,7 @@ with col_output:
             # Badges conditionnels selon le moteur ayant tranché
             if "Rule_Engine" in routed_by:
                 st.markdown(
-                    '<span class="badge-guardrail">🛡️ GARDE-FOU DÉTERMINISTE ACTIVÉ (O(1) Out-of-Scope)</span>',
+                    '<span class="badge-guardrail"> Out-of-Scope</span>',
                     unsafe_allow_html=True,
                 )
             elif "Dense" in routed_by:
