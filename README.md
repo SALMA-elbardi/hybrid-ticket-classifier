@@ -1,4 +1,4 @@
-# 🏦 Hybrid-TicketClassifier: Production-Ready Asymmetric Routing Engine
+# 🏦 Hybrid-TicketClassifier
 
 > Système d'aiguillage asymétrique haute performance pour centres de contact bancaires : concilier l'inférence ultra-rapide (< 15 ms) du Machine Learning supervisé et l'arbitrage sémantique contextuel d'un LLM local contraint, sous gouvernance MLOps complète.
 
