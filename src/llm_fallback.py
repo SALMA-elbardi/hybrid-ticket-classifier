@@ -8,7 +8,6 @@ def load_config(config_path="config.yaml"):
         return yaml.safe_load(f)
 
 
-# Dictionnaire de Few-Shot contextuel issu du dataset Banking77
 CATEGORY_DEFINITIONS_AND_EXAMPLES = {
     "card_arrival": "When will my new physical plastic card arrive in the mail or courier?",
     "card_linking": "How do I link, connect, or attach my existing card to the app account?",
@@ -22,11 +21,6 @@ CATEGORY_DEFINITIONS_AND_EXAMPLES = {
 
 
 class LLMFallbackRouter:
-    """
-    Routeur d'arbitrage exploitant Ollama (llama3.2:3b)
-    avec Few-Shot contextuel et désambiguïsation strictement contrainte.
-    """
-
     def __init__(self, config_path="config.yaml"):
         config = load_config(config_path)
         self.model_name = config["llm"]["model_name"]
@@ -34,8 +28,6 @@ class LLMFallbackRouter:
         self.client = OpenAI(base_url=self.base_url, api_key="ollama")
 
     def route_ticket(self, text: str, allowed_categories: list[str], top_candidates: list[dict]) -> dict:
-        # Règle 2 : Constrained Disambiguation
-        # Si le modèle ML a identifié au moins 2 candidats, on force le LLM à choisir UNIQUEMENT entre eux
         if top_candidates and len(top_candidates) >= 2:
             candidate_names = [c["category"] for c in top_candidates[:2]]
         elif top_candidates:
@@ -43,26 +35,27 @@ class LLMFallbackRouter:
         else:
             candidate_names = allowed_categories
 
-        # Règle 1 : Few-Shot Prompting ciblé sur les classes candidates
+        candidate_names_with_oos = candidate_names + ["out_of_scope"]
+
         few_shot_context = "\n".join(
-            [f'- "{cat}": reference intent example -> "{CATEGORY_DEFINITIONS_AND_EXAMPLES.get(cat, "")}"'
+            [f'- "{cat}": reference intent -> "{CATEGORY_DEFINITIONS_AND_EXAMPLES.get(cat, "")}"'
              for cat in candidate_names]
         )
 
         system_prompt = (
-            "You are a specialized banking intent arbitration agent.\n"
-            "An ML model detected ambiguity and narrowed the prediction down to two candidate classes.\n"
-            f"Candidate classes with reference definitions:\n{few_shot_context}\n\n"
-            f"Constraint: You MUST select exactly ONE category strictly from this restricted list: {json.dumps(candidate_names)}.\n"
-            "Respond ONLY with a valid JSON object matching this schema:\n"
-            '{"category": "<chosen_category>", "reason": "<one concise sentence explaining why this candidate matches better>"}'
+            "You are a strict banking ticket classifier.\n"
+            "Your priority is to identify whether the text contains an actual, explicit banking request.\n\n"
+            "Available categories:\n"
+            f"{few_shot_context}\n"
+            '- "out_of_scope": ANY text that does NOT clearly ask for a banking action (e.g. personal names, chit-chat, greetings, questions about other topics, random sentences).\n\n'
+            "Strict Rules:\n"
+            '1. If the message does not contain a clear problem or question related to the banking categories, you MUST classify it as "out_of_scope".\n'
+            '2. Do NOT force a banking category onto irrelevant text.\n'
+            f"3. You must select strictly ONE category from this list: {json.dumps(candidate_names_with_oos)}.\n\n"
+            'Return ONLY valid JSON: {"category": "<chosen_category>", "reason": "<short justification>"}'
         )
 
-        user_content = (
-            f'Customer Ticket: "{text}"\n'
-            f"Candidate scores from ML: {json.dumps(top_candidates[:2])}\n"
-            "Decide the true category based on the exact intent."
-        )
+        user_content = f'Customer Message to evaluate: "{text}"'
 
         try:
             response = self.client.chat.completions.create(
@@ -71,12 +64,11 @@ class LLMFallbackRouter:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                temperature=0.0,  # Déterminisme maximal pour éviter les hallucinations
+                temperature=0.0,
             )
 
             raw_reply = response.choices[0].message.content.strip()
 
-            # Nettoyage des balises Markdown
             if "```" in raw_reply:
                 raw_reply = raw_reply.split("```")[1]
                 if raw_reply.startswith("json"):
@@ -84,28 +76,14 @@ class LLMFallbackRouter:
 
             parsed = json.loads(raw_reply)
 
-            # Sécurité stricte : si la catégorie n'est pas dans les candidats autorisés, repli sur le top-1 ML
-            if parsed.get("category") not in candidate_names:
-                parsed["category"] = candidate_names[0]
-                parsed["reason"] = "Forced fallback to highest ML candidate due to unconstrained LLM output."
+            if parsed.get("category") not in candidate_names_with_oos:
+                parsed["category"] = "out_of_scope"
+                parsed["reason"] = "Text does not match any valid banking domain intent."
 
             return parsed
 
         except Exception as e:
             return {
-                "category": candidate_names[0] if candidate_names else allowed_categories[0],
+                "category": "out_of_scope",
                 "reason": f"Fallback error recovery: {str(e)}",
             }
-
-
-if __name__ == "__main__":
-    router = LLMFallbackRouter()
-    sample_text = "I asked for a refund last week, but yesterday I saw another unknown charge."
-    top_candidates = [
-        {"category": "extra_charge_on_statement", "score": 0.44},
-        {"category": "pending_transfer", "score": 0.38},
-    ]
-
-    print("--- Test LLMFallbackRouter avec Few-Shot et Constrained Disambiguation ---")
-    result = router.route_ticket(sample_text, list(CATEGORY_DEFINITIONS_AND_EXAMPLES.keys()), top_candidates)
-    print(json.dumps(result, indent=2))
